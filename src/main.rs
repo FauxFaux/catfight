@@ -4,10 +4,17 @@ use getopts::Options;
 use std::env;
 
 use std::io::prelude::*;
+use std::fs;
 use std::fs::File;
 
 fn unarchive(root: &str, blocksize: u64, offset: u64) -> u8 {
+    // TODO
     return 1;
+}
+
+fn read_hint(hint_path: &str) -> u64 {
+    // TODO
+    return 0;
 }
 
 fn print_usage(program: &str, opts: Options) {
@@ -81,7 +88,7 @@ fn real_main() -> u8 {
         return 2;
     }
 
-    let dest_root = matches.free[0].as_str();
+    let dest_root = matches.free[0].clone();
     let src_path = matches.free[1].as_str();
 
     let extra = match matches.opt_str("e") {
@@ -97,6 +104,24 @@ fn real_main() -> u8 {
             return 4;
         }
     };
+
+    let src_len: u64 = match fs::metadata(src_path) {
+        Ok(x) => x.len(),
+        Err(e) => {
+            print!("src file doesn't stat: {}: {}\n", src_path, e);
+            return 5;
+        }
+    };
+
+    let hint_path = dest_root.clone() + ".hint";
+    let hint: u64 = read_hint(hint_path.as_str());
+    let mut skipped_due_to_locking = false;
+
+    for target_num in 0..std::u64::MAX {
+        let target_path = format!("{}.{:022}", dest_root, target_num);
+        print!("{}\n", target_path);
+        break;
+    }
 
     print!("{} {}\n", blocksize, extra);
     return 0;
