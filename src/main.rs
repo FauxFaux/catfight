@@ -1,4 +1,5 @@
 extern crate getopts;
+extern crate libc;
 
 use getopts::Options;
 use std::env;
@@ -6,6 +7,8 @@ use std::env;
 use std::io::prelude::*;
 use std::fs;
 use std::fs::File;
+
+use std::os::unix::io::AsRawFd;
 
 fn unarchive(root: &str, blocksize: u64, offset: u64) -> u8 {
     // TODO
@@ -20,6 +23,27 @@ fn read_hint(hint_path: &str) -> u64 {
 fn print_usage(program: &str, opts: Options) {
     let brief = format!("Usage: {} FILE [options]", program);
     print!("{}", opts.usage(&brief));
+}
+
+// TODO: replace with a module, or ..?
+fn errno() -> i32 {
+    unsafe {
+        *libc::__errno_location() as i32
+    }
+}
+
+fn non_blocking_flock(what: &File) -> Result<bool, i32> {
+    unsafe {
+        let ret = libc::flock(what.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB);
+        if 0 != ret {
+            let failure = errno();
+            if libc::EWOULDBLOCK == failure {
+                return Ok(false);
+            }
+            return Err(failure)
+        }
+    }
+    return Ok(true)
 }
 
 #[derive(PartialEq)]
@@ -119,6 +143,19 @@ fn real_main() -> u8 {
 
     for target_num in 0..std::u64::MAX {
         let target_path = format!("{}.{:022}", dest_root, target_num);
+        let fd = match File::create(target_path.as_str()) {
+            Ok(x) => x,
+            Err(e) => panic!(e),
+        };
+
+        match non_blocking_flock(&fd) {
+            Ok(locked) => if !locked {
+                skipped_due_to_locking = true;
+                continue;
+            },
+            Err(e) => panic!(e),
+        };
+
         print!("{}\n", target_path);
         break;
     }

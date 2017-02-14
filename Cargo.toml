@@ -5,4 +5,4 @@ authors = ["Chris West (Faux) <git@goeswhere.com>"]
 
 [dependencies]
 getopts = "0.2"
-sendfile = "0.1.1"
+libc = "0.2.20"
