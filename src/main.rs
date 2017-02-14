@@ -3,6 +3,9 @@ extern crate getopts;
 extern crate libc;
 
 mod copy;
+mod errno;
+
+use errno::errno;
 
 // normal, sane imports:
 use std::env;
@@ -30,13 +33,6 @@ fn read_hint(hint_path: &str) -> u64 {
 fn print_usage(program: &str, opts: Options) {
     let brief = format!("Usage: {} FILE [options]", program);
     print!("{}", opts.usage(&brief));
-}
-
-// TODO: replace with a module, or ..?
-fn errno() -> i32 {
-    unsafe {
-        *libc::__errno_location() as i32
-    }
 }
 
 /// @return true if locked, false if locking would block, error if something went wrong
@@ -161,7 +157,9 @@ fn real_main() -> u8 {
 
     for target_num in 0..std::u64::MAX {
         let target_path = format!("{}.{:022}", dest_root, target_num);
-        let mut fd = File::create(target_path.as_str()).unwrap();
+        let mut fd = std::fs::OpenOptions::new()
+            .write(true).create(true)
+            .open(target_path.as_str()).unwrap();
 
         if !non_blocking_flock(&fd).unwrap() {
             skipped_due_to_locking = true;
@@ -188,15 +186,14 @@ fn real_main() -> u8 {
             continue;
         }
 
-        {
-            let extra_len: u64 = extra.len() as u64;
-            let record_end = 8 + 8 + src_len + extra_len;
-            fd.write_u64::<BigEndian>(record_end).unwrap();
-            fd.write_u64::<BigEndian>(extra_len).unwrap();
-            fd.write_all(extra.as_bytes()).unwrap();
-        }
+        let extra_len: u64 = extra.len() as u64;
+        let record_end = 8 + 8 + src_len + extra_len;
+        fd.write_u64::<BigEndian>(record_end).unwrap();
+        fd.write_u64::<BigEndian>(extra_len).unwrap();
+        fd.write_all(extra.as_bytes()).unwrap();
+        fd.flush().unwrap();
 
-        fd.set_len(seek + src_len).unwrap();
+        fd.set_len(seek + record_end).unwrap();
         unlock_flock(&fd).unwrap();
 
         copy::copy_file(&src, &fd, src_len).unwrap();
@@ -205,7 +202,6 @@ fn real_main() -> u8 {
         break;
     }
 
-    print!("{} {}\n", blocksize, extra);
     return 0;
 }
 
