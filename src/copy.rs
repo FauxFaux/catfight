@@ -6,7 +6,12 @@ use std::os::unix::io::AsRawFd;
 
 use errno;
 
-fn try_sendfile(src: &File, dest: &File, len: u64) -> Result<(), String> {
+enum CopyFailure {
+    Unsupported,
+    Errno(i32),
+}
+
+fn try_sendfile(src: &File, dest: &File, len: u64) -> Result<(), CopyFailure> {
     let mut remaining = len;
     while remaining > 0 {
         unsafe {
@@ -21,10 +26,10 @@ fn try_sendfile(src: &File, dest: &File, len: u64) -> Result<(), String> {
 
                 if len == remaining &&
                     (libc::EINVAL == error || libc::ENOSYS == error) {
-                        // TODO: return TRY_ANOTHER
+                        return Err(CopyFailure::Unsupported)
                 }
 
-                return Err(format!("sendfile failed: errno({})", error));
+                return Err(CopyFailure::Errno(error));
             }
             remaining -= sent as u64;
         }
@@ -32,9 +37,23 @@ fn try_sendfile(src: &File, dest: &File, len: u64) -> Result<(), String> {
     return Ok(());
 }
 
-pub fn copy_file(src: &File, dest: &File, len: u64) -> Result<(), String> {
+fn try_streams(src: &mut File, dest: &mut File, len: u64) -> Result<(), ()> {
+    std::io::copy(src, dest).unwrap();
+    return Ok(());
+}
+
+pub fn copy_file(src: &mut File, dest: &mut File, len: u64) -> Result<(), String> {
     // TODO: copy_file_range
 
-    try_sendfile(src, dest, len).unwrap();
-    return Ok(());
+    match try_sendfile(src, dest, len) {
+        Ok(_) => return Ok(()),
+        Err(fail) => match fail {
+            CopyFailure::Errno(x) => return Err(format!("sendfile failed: errno({})", x)),
+            CopyFailure::Unsupported => ()
+        }
+    };
+
+    try_streams(src, dest, len).unwrap();
+
+    return Err("unsupported".to_string());
 }

@@ -196,7 +196,7 @@ fn real_main() -> u8 {
         fd.set_len(seek + record_end).unwrap();
         unlock_flock(&fd).unwrap();
 
-        copy::copy_file(&src, &fd, src_len).unwrap();
+        copy::copy_file(&mut src, &mut fd, src_len).unwrap();
 
         print!("{}\n", target_num * blocksize + seek);
         break;
