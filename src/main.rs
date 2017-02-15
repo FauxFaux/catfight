@@ -31,7 +31,10 @@ fn read_hint(hint_path: &str) -> u64 {
 }
 
 fn print_usage(program: &str, opts: Options) {
-    let brief = format!("Usage: {} FILE [options]", program);
+    let brief = format!("\
+    Usage: {0} [options] [-e extra-data] output-prefix input\n\
+    Usage: {0} [options] -u offset output-prefix\n\
+    ", program);
     print!("{}", opts.usage(&brief));
 }
 
@@ -86,7 +89,7 @@ fn real_main() -> u8 {
         return 2;
     }
 
-    if !(matches.opt_present("e") ^ matches.opt_present("u")) {
+    if matches.opt_present("e") && matches.opt_present("u") {
         print!("-e and -u don't make sense together\n");
         return 3;
     }
