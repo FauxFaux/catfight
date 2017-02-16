@@ -5,8 +5,6 @@ use std::io;
 use std::fs::File;
 use std::os::unix::io::{RawFd, AsRawFd};
 
-use errno;
-
 enum CopyFailure {
     Unsupported,
     Errno(io::Error),
@@ -35,7 +33,7 @@ fn try_sendfile(src: &File, dest: &MyRawFd, len: u64) -> Result<(), CopyFailure>
             let offset: *mut i64 = std::ptr::null_mut();
             let to_send: usize = std::cmp::min(std::u32::MAX as u64, remaining) as usize;
             let sent = libc::sendfile(dest.my_raw_fd(), src.as_raw_fd(),
-                    offset, remaining as usize);
+                    offset, to_send as usize);
             if -1 == sent {
                 let error = io::Error::last_os_error();
                 if let Some(code) = error.raw_os_error() {
