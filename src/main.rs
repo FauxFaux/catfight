@@ -192,7 +192,7 @@ fn real_main() -> u8 {
     if Operation::Unarchive == op {
         let offset: u64 = match matches.opt_str("u") {
             Some(x) => x.parse().unwrap(),
-            None => panic!("unreachable"),
+            None => unreachable!(),
         };
 
         if 1 != matches.free.len() {
