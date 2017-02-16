@@ -1,6 +1,7 @@
 extern crate libc;
 
 use std;
+use std::io;
 use std::fs::File;
 use std::os::unix::io::AsRawFd;
 
@@ -8,7 +9,7 @@ use errno;
 
 enum CopyFailure {
     Unsupported,
-    Errno(i32),
+    Errno(io::Error),
 }
 
 fn try_sendfile(src: &File, dest: &File, len: u64) -> Result<(), CopyFailure> {
@@ -17,16 +18,20 @@ fn try_sendfile(src: &File, dest: &File, len: u64) -> Result<(), CopyFailure> {
         unsafe {
             let offset: *mut i64 = std::ptr::null_mut();
             let to_send: usize = std::cmp::min(std::u32::MAX as u64, remaining) as usize;
-            let sent = libc::sendfile(dest.as_raw_fd(), src.as_raw_fd(), offset, remaining as usize);
-            let error = errno();
+            let sent = libc::sendfile(dest.as_raw_fd(), src.as_raw_fd(),
+                    offset, remaining as usize);
             if -1 == sent {
-                if libc::EAGAIN == error {
-                    continue;
-                }
+                let error = io::Error::last_os_error();
+                if let Some(code) = error.raw_os_error() {
+                    if libc::EAGAIN == code {
+                        continue;
+                    }
 
-                if len == remaining &&
-                    (libc::EINVAL == error || libc::ENOSYS == error) {
-                        return Err(CopyFailure::Unsupported)
+                    if len == remaining &&
+                        (libc::EINVAL == code || libc::ENOSYS == code) {
+                            return Err(CopyFailure::Unsupported)
+                    }
+
                 }
 
                 return Err(CopyFailure::Errno(error));
@@ -42,18 +47,18 @@ fn try_streams(src: &mut File, dest: &mut File, len: u64) -> Result<(), ()> {
     return Ok(());
 }
 
-pub fn copy_file(src: &mut File, dest: &mut File, len: u64) -> Result<(), String> {
+pub fn copy_file(src: &mut File, dest: &mut File, len: u64) -> Result<(), io::Error> {
     // TODO: copy_file_range
 
     match try_sendfile(src, dest, len) {
         Ok(()) => return Ok(()),
         Err(fail) => match fail {
-            CopyFailure::Errno(x) => return Err(format!("sendfile failed: errno({})", x)),
+            CopyFailure::Errno(x) => return Err(x),
             CopyFailure::Unsupported => ()
         }
     };
 
     try_streams(src, dest, len).unwrap();
 
-    return Err("unsupported".to_string());
+    return Ok(());
 }

@@ -20,10 +20,23 @@ use getopts::Options;
 
 // magic method-adding imports:
 use std::os::unix::io::AsRawFd;
-use byteorder::{BigEndian, WriteBytesExt};
+use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 
-fn unarchive(root: &str, blocksize: u64, offset: u64) -> u8 {
-    unimplemented!();
+fn unarchive(root: &str, block_size: u64, offset: u64) -> Result<(), io::Error> {
+    let target_file_id: u64 = offset / block_size;
+    let target_file_offset = offset % block_size;
+
+    let target_path = format!("{}.{:22}", root, target_file_id);
+    let fd = try!(File::open(target_path));
+    try!(fd.seek(io::SeekFrom::Start(target_file_offset)));
+    let end = try!(fd.read_u64::<BigEndian>());
+    let extra_len = try!(fd.read_u64::<BigEndian>());
+    assert!(extra_len < std::i64::MAX as u64);
+    try!(fd.seek(io::SeekFrom::Current(extra_len as i64)));
+
+    try!(copy::copy_file(&mut fd, &mut io::stdout(), end - extra_len - 8 - 8));
+
+    return Ok(());
 }
 
 fn create_hint_temp_file(hint_path: &str, to_write: &str) -> Result<String, io::Error> {
@@ -174,7 +187,8 @@ fn real_main() -> u8 {
             return 2;
         }
 
-        return unarchive(matches.free[0].as_str(), blocksize, offset);
+        unarchive(matches.free[0].as_str(), blocksize, offset).unwrap();
+        return 0;
     }
 
     if 2 != matches.free.len() {
@@ -222,7 +236,7 @@ fn real_main() -> u8 {
             continue;
         }
 
-        let mut seek: u64 = fd.seek(std::io::SeekFrom::End(0)).unwrap();
+        let mut seek: u64 = fd.seek(io::SeekFrom::End(0)).unwrap();
 
         if 0 == seek {
             // we locked a new file, write a header
