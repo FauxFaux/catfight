@@ -25,10 +25,24 @@ fn unarchive(root: &str, block_size: u64, offset: u64) -> Result<(), io::Error> 
 
     let target_path = format!("{}.{:022}", root, target_file_id);
     let mut fd = try!(File::open(target_path));
+    let file_len = try!(fd.seek(io::SeekFrom::End(0)));
+
     try!(fd.seek(io::SeekFrom::Start(target_file_offset)));
     let end = try!(fd.read_u64::<BigEndian>());
     let extra_len = try!(fd.read_u64::<BigEndian>());
-    assert!(extra_len < std::i64::MAX as u64);
+
+    assert!(end >= 8 + 8,
+            "there isn't even a header, invalid offset?");
+
+    assert!(extra_len < std::i64::MAX as u64,
+            "extra length is far too large, invalid offset?");
+
+    assert!(extra_len <= end - 8 - 8,
+            "too much extra data for record; invalid offset?");
+
+    assert!(target_file_offset + end <= file_len,
+            "record extends beyond end of file; invalid offset?");
+
     try!(fd.seek(io::SeekFrom::Current(extra_len as i64)));
 
     try!(copy::copy_file(&mut fd, &mut io::stdout(), end - extra_len - 8 - 8));
