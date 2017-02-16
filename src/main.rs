@@ -23,7 +23,7 @@ fn unarchive(root: &str, block_size: u64, offset: u64) -> Result<(), io::Error> 
     let target_file_id: u64 = offset / block_size;
     let target_file_offset = offset % block_size;
 
-    let target_path = format!("{}.{:22}", root, target_file_id);
+    let target_path = format!("{}.{:022}", root, target_file_id);
     let mut fd = try!(File::open(target_path));
     try!(fd.seek(io::SeekFrom::Start(target_file_offset)));
     let end = try!(fd.read_u64::<BigEndian>());

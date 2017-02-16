@@ -34,7 +34,14 @@ fn try_sendfile(src: &File, dest: &MyRawFd, len: u64) -> Result<(), CopyFailure>
             let to_send: usize = std::cmp::min(std::u32::MAX as u64, remaining) as usize;
             let sent = libc::sendfile(dest.my_raw_fd(), src.as_raw_fd(),
                     offset, to_send as usize);
-            if -1 == sent {
+
+            if sent == 0 {
+                return Err(CopyFailure::Errno(io::Error::new(
+                            io::ErrorKind::WriteZero,
+                            "sendfile didn't want to send anything")));
+            }
+
+            if sent < 0 {
                 let error = io::Error::last_os_error();
                 if let Some(code) = error.raw_os_error() {
                     if libc::EAGAIN == code {
