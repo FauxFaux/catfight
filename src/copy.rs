@@ -38,7 +38,7 @@ fn try_sendfile(src: &File, dest: &File, len: u64) -> Result<(), CopyFailure> {
 }
 
 fn try_streams(src: &mut File, dest: &mut File, len: u64) -> Result<(), ()> {
-    std::io::copy(src, dest).unwrap();
+    assert_eq!(len, std::io::copy(src, dest).unwrap());
     return Ok(());
 }
 
@@ -46,7 +46,7 @@ pub fn copy_file(src: &mut File, dest: &mut File, len: u64) -> Result<(), String
     // TODO: copy_file_range
 
     match try_sendfile(src, dest, len) {
-        Ok(_) => return Ok(()),
+        Ok(()) => return Ok(()),
         Err(fail) => match fail {
             CopyFailure::Errno(x) => return Err(format!("sendfile failed: errno({})", x)),
             CopyFailure::Unsupported => ()

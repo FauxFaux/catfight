@@ -1,6 +1,7 @@
 extern crate byteorder;
 extern crate getopts;
 extern crate libc;
+extern crate rand;
 
 mod copy;
 mod errno;
@@ -9,6 +10,7 @@ use errno::errno;
 
 // normal, sane imports:
 use std::env;
+use std::io;
 use std::io::prelude::*;
 use std::fs;
 use std::fs::File;
@@ -21,13 +23,64 @@ use std::os::unix::io::AsRawFd;
 use byteorder::{BigEndian, WriteBytesExt};
 
 fn unarchive(root: &str, blocksize: u64, offset: u64) -> u8 {
-    // TODO
-    return 1;
+    unimplemented!();
+}
+
+fn create_hint_temp_file(hint_path: &str, to_write: &str) -> Result<String, io::Error> {
+    for _ in 0..50_000 {
+        let unique: u64 = rand::random();
+        let temp_file = format!("{}.{}~", hint_path, unique);
+        match std::os::unix::fs::symlink(&to_write, &temp_file) {
+            Ok(()) => return Ok(temp_file),
+            Err(err) => {
+                if let Some(code) = err.raw_os_error() {
+                    if libc::EEXIST == code {
+                        continue;
+                    }
+                }
+                return Err(err);
+            },
+        }
+    }
+    return Err(io::Error::new(io::ErrorKind::Other, "couldn't race temporary file creation"));
+}
+
+fn write_hint(hint_path: &str, val: u64) -> Result<(), std::io::Error> {
+    let to_write = format!("/{}", val);
+    let temp_file = try!(create_hint_temp_file(hint_path, &to_write));
+    return fs::rename(&temp_file, hint_path).or_else(|mv_err| {
+        if let Err(rm_err) = fs::remove_file(&temp_file) {
+            print!("warning: couldn't remove temporary file '{}': {}\n", temp_file, rm_err);
+        }
+        return Err(mv_err);
+    });
 }
 
 fn read_hint(hint_path: &str) -> u64 {
-    // TODO
-    return 0;
+    let content = match std::fs::read_link(hint_path) {
+        Ok(contents) => contents,
+        Err(err) => {
+            if let Some(code) = err.raw_os_error() {
+                if libc::ENOENT == code {
+                    if let Err(e) = write_hint(hint_path, 0) {
+                        print!("warning: couldn't create initial hint file: {}\n", e);
+                    }
+                    return 0;
+                }
+            }
+            print!("warning: hint file problem: {}\n", err);
+            return 0;
+        },
+    };
+
+    let without_leading_slash = &(content.to_string_lossy()[1..]);
+    return match without_leading_slash.parse() {
+        Ok(x) => x,
+        Err(e) => {
+            print!("warning: invalid hint file, ignoring: {}\n", e);
+            return 0;
+        }
+    };
 }
 
 fn print_usage(program: &str, opts: Options) {
@@ -202,6 +255,13 @@ fn real_main() -> u8 {
         copy::copy_file(&mut src, &mut fd, src_len).unwrap();
 
         print!("{}\n", target_num * blocksize + seek);
+
+        if !skipped_due_to_locking && target_num > hint {
+            if let Err(e) = write_hint(&hint_path, target_num) {
+                print!("warning: couldn't update hint: {}\n", e);
+            }
+        }
+
         break;
     }
 
