@@ -4,9 +4,6 @@ extern crate libc;
 extern crate rand;
 
 mod copy;
-mod errno;
-
-use errno::errno;
 
 // normal, sane imports:
 use std::env;
@@ -105,13 +102,15 @@ fn print_usage(program: &str, opts: Options) {
 }
 
 /// @return true if locked, false if locking would block, error if something went wrong
-fn non_blocking_flock(what: &File) -> Result<bool, i32> {
+fn non_blocking_flock(what: &File) -> Result<bool, io::Error> {
     unsafe {
         let ret = libc::flock(what.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB);
         if 0 != ret {
-            let failure = errno();
-            if libc::EWOULDBLOCK == failure {
-                return Ok(false);
+            let failure = io::Error::last_os_error();
+            if let Some(code) = failure.raw_os_error() {
+                if libc::EWOULDBLOCK == code {
+                    return Ok(false);
+                }
             }
             return Err(failure)
         }
@@ -119,11 +118,11 @@ fn non_blocking_flock(what: &File) -> Result<bool, i32> {
     return Ok(true)
 }
 
-fn unlock_flock(what: &File) -> Result<(), i32> {
+fn unlock_flock(what: &File) -> Result<(), io::Error> {
     unsafe {
         let ret = libc::flock(what.as_raw_fd(), libc::LOCK_UN);
         if 0 != ret {
-            return Err(errno())
+            return Err(io::Error::last_os_error())
         }
     }
     return Ok(())
